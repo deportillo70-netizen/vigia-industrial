@@ -1,6 +1,6 @@
 # PROYECTO: VIG.IA - SISTEMA DE INTELIGENCIA INDUSTRIAL
 # ARCHIVO: vigia.py
-# VERSIÓN: 2.1 (MULTI-USER PRIVACY FIX)
+# VERSIÓN: 2.2 (NO-SECRETS EDITION - LISTO PARA USAR)
 
 import streamlit as st
 import tempfile
@@ -9,7 +9,8 @@ import time
 from Nucleo_Vigia import InspectorIndustrial
 
 # --- ⚠️ CONFIGURACIÓN ---
-CLAVE_MAESTRA = "" 
+# Aquí está tu llave lista para usar:
+CLAVE_MAESTRA = "AIzaSyCW7R-xFb9eupsLcHEeuuZUCvAp3-l3bn4" 
 # ------------------------
 
 # 1. CONFIGURACIÓN DE PÁGINA
@@ -30,21 +31,28 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- LOGIN ---
+# --- LOGIN (SIMPLIFICADO) ---
 def check_password():
     if "password_correct" not in st.session_state: st.session_state["password_correct"] = False
     if st.session_state["password_correct"]: return True
-    if CLAVE_MAESTRA: st.session_state["password_correct"] = True; return True
-
+    
+    # Si ya pusiste la clave maestra en el código, permitimos el acceso, 
+    # pero igual pedimos login por formalidad.
+    
     col_spacer1, col_login, col_spacer2 = st.columns([1, 2, 1])
     with col_login:
         st.markdown("<h1 style='text-align: center; color: #333;'>🟠 VIG.IA</h1>", unsafe_allow_html=True)
         st.markdown("<h4 style='text-align: center; color: #666;'>SISTEMA DE INTELIGENCIA INDUSTRIAL</h4>", unsafe_allow_html=True)
         st.markdown("---")
         pwd = st.text_input("Credencial de Acceso:", type="password")
+        
         if st.button("INGRESAR AL SISTEMA", use_container_width=True):
-            if pwd == st.secrets["APP_PASSWORD"]: st.session_state["password_correct"] = True; st.rerun()
-            else: st.error("⛔ CREDENCIAL INVÁLIDA")
+            # --- CAMBIO: Contraseña fija "admin" para evitar errores ---
+            if pwd == "admin": 
+                st.session_state["password_correct"] = True
+                st.rerun()
+            else: 
+                st.error("⛔ CREDENCIAL INVÁLIDA")
     return False
 
 if not check_password(): st.stop()
@@ -53,24 +61,27 @@ if not check_password(): st.stop()
 if 'inspector' not in st.session_state: st.session_state.inspector = InspectorIndustrial()
 inspector = st.session_state.inspector
 
-try: API_KEY_NUBE = st.secrets["GOOGLE_API_KEY"]
-except: API_KEY_NUBE = ""
+# Usamos la clave maestra que pusimos arriba
+api_key = CLAVE_MAESTRA 
 
 # --- SIDEBAR ---
 with st.sidebar:
     st.markdown("# 🟠 VIG.IA")
-    st.markdown("**Industrial Intelligence v2.1**")
+    st.markdown("**Industrial Intelligence v2.2**")
     st.markdown("---")
-    if CLAVE_MAESTRA: api_key = CLAVE_MAESTRA; st.success("🔓 Licencia: LOCAL")
-    elif API_KEY_NUBE: api_key = API_KEY_NUBE; st.info("☁️ Licencia: CLOUD")
-    else: api_key = st.text_input("🔑 API Key:", type="password")
+    
+    if api_key:
+        st.success("🔓 Licencia: LOCAL (ACTIVA)")
+    else:
+        st.error("🔒 Falta API Key")
+        
     st.markdown("---")
     st.markdown("### 👷‍♂️ Datos de Auditoría")
     
-    # MODIFICACIÓN: Guardamos el usuario en session_state para que no se borre al cambiar de pestaña
+    # Mantenemos el usuario activo
     if 'usuario_actual' not in st.session_state: st.session_state.usuario_actual = "Invitado Remoto"
     usuario = st.text_input("Inspector:", st.session_state.usuario_actual)
-    st.session_state.usuario_actual = usuario # Actualizar estado
+    st.session_state.usuario_actual = usuario 
     
     proyecto = st.text_input("Activo / Tag:", "Inspección Móvil")
 
@@ -89,10 +100,10 @@ with tab1:
         st.markdown("---")
         st.info("📷 **Captura de Evidencia (Múltiple)**")
         
-        # A: Galería (Múltiples Archivos)
+        # A: Galería
         archivos_galeria = st.file_uploader("📁 Subir fotos (Máx 10)", type=["jpg", "png", "jpeg"], accept_multiple_files=True)
         
-        # B: Cámara (Una por vez, se suma)
+        # B: Cámara
         st.markdown("**O agregar foto de Cámara:**")
         archivo_camara = st.camera_input("ACTIVAR CÁMARA", label_visibility="collapsed")
 
@@ -126,12 +137,12 @@ with tab1:
     
     # BOTÓN DE ACCIÓN
     if st.button("👁️ EJECUTAR ANÁLISIS VIG.IA (MULTI-FOTO)", use_container_width=True):
-        if not api_key: st.error("⛔ Falta API Key.")
+        if not api_key: st.error("⛔ Falta API Key en el código.")
         elif not lista_imagenes_final: st.error("⚠️ Debe cargar al menos una imagen.")
         else:
             with st.spinner(f"🔄 VIG.IA analizando {len(lista_imagenes_final)} imágenes..."):
                 
-                # Guardar todas las imágenes temporalmente
+                # Guardar imágenes temporalmente
                 rutas_temporales = []
                 for img_file in lista_imagenes_final:
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
@@ -140,7 +151,7 @@ with tab1:
                 
                 info = {"usuario": usuario, "proyecto": proyecto, "modulo": modulo, "norma": norma}
                 
-                # Llamada al núcleo con la LISTA de rutas
+                # Llamada al núcleo
                 resultado = inspector.analizar_imagen_con_ia(api_key, rutas_temporales, info, datos_tecnicos)
                 
                 st.session_state['res_web'] = resultado
@@ -161,23 +172,22 @@ with tab1:
 with tab2:
     col_head, col_trash = st.columns([3, 1])
     with col_head: 
-        st.header(f"Historial de: {usuario}") # Título dinámico
+        st.header(f"Historial de: {usuario}") 
     with col_trash:
-        # CORRECCIÓN DE PRIVACIDAD: Solo borra lo de este usuario
+        # Borra solo lo de este usuario
         if st.button("🗑️ LIMPIAR MIS DATOS"): 
-            inspector.borrar_memoria(usuario) # Pasamos el usuario explícitamente
+            inspector.borrar_memoria(usuario) 
             st.warning(f"Historial de {usuario} eliminado.")
             time.sleep(1)
             st.rerun()
             
     if st.button("🔄 Actualizar Tabla"): st.rerun()
     
-    # CORRECCIÓN DE PRIVACIDAD: Solo lee lo de este usuario
-    historial = inspector.obtener_historial(usuario) # Filtramos por usuario
+    # Lee solo lo de este usuario (desde Google Sheets si ya actualizaste el Nucleo)
+    historial = inspector.obtener_historial(usuario) 
     
     if historial:
         for fila in historial:
-            # fila = (fecha, proyecto, modulo, norma, dictamen)
             with st.expander(f"📅 {fila[0]} | {fila[1]} ({fila[2]})"):
                 st.markdown(f"**Norma Aplicada:** {fila[3]}")
                 st.markdown("---")
