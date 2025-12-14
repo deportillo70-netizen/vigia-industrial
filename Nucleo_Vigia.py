@@ -88,6 +88,10 @@ class InspectorIndustrial:
         # Cargar todas las imágenes en una lista para Gemini
         imagenes_pil = []
         try:
+            # Detectamos si es lista o string (por seguridad)
+            if isinstance(lista_rutas_imagenes, str):
+                lista_rutas_imagenes = [lista_rutas_imagenes]
+
             for ruta in lista_rutas_imagenes:
                 imagenes_pil.append(PIL.Image.open(ruta))
         except Exception as e:
@@ -150,6 +154,10 @@ class InspectorIndustrial:
             pdf.set_text_color(0, 0, 0)
             pdf.ln(10)
             
+            # Aseguramos que sea lista
+            if isinstance(lista_rutas_imagenes, str):
+                lista_rutas_imagenes = [lista_rutas_imagenes]
+
             y_pos = 40
             for i, ruta in enumerate(lista_rutas_imagenes):
                 if os.path.exists(ruta):
