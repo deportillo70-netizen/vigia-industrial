@@ -1,6 +1,6 @@
-# PROYECTO: VIGÍA INDUSTRIAL - CEREBRO CON GESTIÓN DE MEMORIA
+# PROYECTO: VIG.IA - CEREBRO (BRANDED PDF VERSION)
 # ARCHIVO: Nucleo_Vigia.py
-# DESCRIPCIÓN: Backend con funciones de IA, PDF y limpieza de Base de Datos.
+# DESCRIPCIÓN: Backend con IA, Base de Datos y Reportes PDF con Logo Corporativo.
 
 import google.generativeai as genai
 from fpdf import FPDF
@@ -10,29 +10,23 @@ import os
 import sqlite3
 import time
 
-# --- 1. GESTOR DE BASE DE DATOS (LA MEMORIA) ---
+# --- 1. GESTOR DE BASE DE DATOS (MEMORIA) ---
 class GestorDatos:
     def __init__(self, db_name="historial_vigia.db"):
         self.db_name = db_name
         self._inicializar_db()
 
     def _inicializar_db(self):
-        """Crea la tabla si no existe."""
         conn = sqlite3.connect(self.db_name)
         c = conn.cursor()
         c.execute('''CREATE TABLE IF NOT EXISTS inspecciones
                      (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                      fecha TEXT,
-                      proyecto TEXT,
-                      inspector TEXT,
-                      modulo TEXT,
-                      norma TEXT,
-                      dictamen TEXT)''')
+                      fecha TEXT, proyecto TEXT, inspector TEXT,
+                      modulo TEXT, norma TEXT, dictamen TEXT)''')
         conn.commit()
         conn.close()
 
     def guardar_inspeccion(self, proyecto, inspector, modulo, norma, dictamen):
-        """Guarda el resultado de la IA en la base de datos."""
         conn = sqlite3.connect(self.db_name)
         c = conn.cursor()
         fecha = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -42,7 +36,6 @@ class GestorDatos:
         conn.close()
 
     def leer_historial(self):
-        """Devuelve todas las inspecciones guardadas."""
         conn = sqlite3.connect(self.db_name)
         c = conn.cursor()
         c.execute("SELECT fecha, proyecto, modulo, norma, dictamen FROM inspecciones ORDER BY fecha DESC")
@@ -51,139 +44,97 @@ class GestorDatos:
         return datos
 
     def borrar_historial(self):
-        """ELIMINA TODOS LOS REGISTROS DE LA BASE DE DATOS."""
         conn = sqlite3.connect(self.db_name)
         c = conn.cursor()
         c.execute("DELETE FROM inspecciones")
         conn.commit()
         conn.close()
 
-# --- 2. CEREBRO PRINCIPAL ---
+# --- 2. CEREBRO PRINCIPAL (IA) ---
 class InspectorIndustrial:
     def __init__(self):
         self.db = GestorDatos()
-        # Base de conocimiento
         self.estructura_conocimiento = {
-            "MECÁNICO (Tanques/Recipientes)": ["API 653 (Tanques)", "API 510 (Presión)", "API 570 (Tuberías)"],
-            "SOLDADURA Y ESTRUCTURA": ["ASME IX (WPS/PQR)", "AWS D1.1 (Acero)", "API 1104 (Lineas)"],
-            "CORROSIÓN Y PINTURA": ["NACE SP0188", "SSPC-PA2 (Espesores)", "ISO 8501 (Limpieza)"],
-            "ELÉCTRICO Y POTENCIA": ["NFPA 70B (Mantenimiento)", "NETA MTS", "IEEE 43 (Aislamiento)"],
+            "MECÁNICO (Tanques/Recipientes)": ["API 653", "API 510", "API 570"],
+            "SOLDADURA Y ESTRUCTURA": ["ASME IX", "AWS D1.1", "API 1104"],
+            "CORROSIÓN Y PINTURA": ["NACE SP0188", "SSPC-PA2", "ISO 8501"],
+            "ELÉCTRICO Y POTENCIA": ["NFPA 70B", "NETA MTS", "IEEE 43"],
             "SEGURIDAD (HSE)": ["OSHA 1910", "ISO 45001"]
         }
 
-    def obtener_modulos(self):
-        return list(self.estructura_conocimiento.keys())
-
-    def obtener_normas(self, modulo):
-        return self.estructura_conocimiento.get(modulo, [])
-    
-    def obtener_historial(self):
-        return self.db.leer_historial()
-
-    def borrar_memoria(self):
-        """Llama al gestor de datos para limpiar la tabla."""
-        self.db.borrar_historial()
+    def obtener_modulos(self): return list(self.estructura_conocimiento.keys())
+    def obtener_normas(self, modulo): return self.estructura_conocimiento.get(modulo, [])
+    def obtener_historial(self): return self.db.leer_historial()
+    def borrar_memoria(self): self.db.borrar_historial()
 
     def _encontrar_modelo_disponible(self):
-        """Busca el mejor modelo disponible en la cuenta de Google."""
         try:
-            lista_modelos = []
-            for m in genai.list_models():
-                if 'generateContent' in m.supported_generation_methods:
-                    lista_modelos.append(m.name)
-            
-            # Prioridades
-            for m in lista_modelos:
+            lista = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            for m in lista:
                 if 'flash' in m and '1.5' in m: return m
-            for m in lista_modelos:
+            for m in lista:
                 if 'pro' in m and 'vision' in m: return m
-            
-            if lista_modelos: return lista_modelos[0]
-            return None
-        except:
-            return None
+            return lista[0] if lista else None
+        except: return None
 
-    def analizar_imagen_con_ia(self, api_key, ruta_imagen, datos_inspeccion, ficha_tecnica_str):
-        """
-        Analiza la imagen usando datos técnicos específicos y guarda en DB.
-        """
-        # 1. Configurar
+    def analizar_imagen_con_ia(self, api_key, ruta_imagen, datos_ins, datos_tec):
         genai.configure(api_key=api_key)
-        modelo_nombre = self._encontrar_modelo_disponible()
-        
-        if not modelo_nombre:
-            return "ERROR CRÍTICO: No se encontraron modelos de IA disponibles. Revise conexión/VPN."
+        modelo = self._encontrar_modelo_disponible()
+        if not modelo: return "ERROR: No hay modelos IA disponibles."
 
-        # 2. Cargar imagen
         try:
             img = PIL.Image.open(ruta_imagen)
-        except Exception as e:
-            return f"Error imagen: {e}"
+        except: return "Error al abrir imagen."
 
-        # 3. Prompt Avanzado (Con Datos Técnicos)
         prompt = f"""
-        Rol: Inspector Senior en {datos_inspeccion['modulo']}.
-        Tarea: Auditoría según {datos_inspeccion['norma']}.
-        
-        DATOS TÉCNICOS DEL EQUIPO (FICHA TÉCNICA):
-        {ficha_tecnica_str}
-        
-        Instrucciones: Analiza la imagen buscando fallas que contradigan la norma o los datos técnicos provistos.
-        
-        Genera REPORTE TÉCNICO:
-        1. HALLAZGOS VISUALES: (Sé específico).
-        2. ANÁLISIS NORMATIVO: (Cita la norma {datos_inspeccion['norma']}).
-        3. CAUSA RAÍZ: (Basada en la física del fallo).
-        4. RECOMENDACIÓN: (Acción correctiva).
+        Rol: Inspector Senior {datos_ins['modulo']}. Norma: {datos_ins['norma']}.
+        Contexto Técnico: {datos_tec}
+        Tarea: Auditoría visual. Genera REPORTE TÉCNICO ESTRUCTURADO:
+        1. HALLAZGOS VISUALES (Detallado).
+        2. ANÁLISIS NORMATIVO {datos_ins['norma']} (Cumple/No Cumple y Criterio).
+        3. CAUSA RAÍZ PROBABLE.
+        4. RECOMENDACIÓN EJECUTIVA (Acción concreta).
+        Tono: Autoritario, técnico, sin saludos.
         """
-
         try:
-            model = genai.GenerativeModel(modelo_nombre)
+            model = genai.GenerativeModel(modelo)
             response = model.generate_content([prompt, img])
-            texto_resultado = response.text
-            
-            # 4. GUARDAR EN MEMORIA (DB)
-            self.db.guardar_inspeccion(
-                datos_inspeccion['proyecto'],
-                datos_inspeccion['usuario'],
-                datos_inspeccion['modulo'],
-                datos_inspeccion['norma'],
-                texto_resultado
-            )
-            
-            return f"[Fuente: {modelo_nombre}]\n\n" + texto_resultado
-            
-        except Exception as e:
-            return f"Error IA: {str(e)}"
+            text = response.text
+            self.db.guardar_inspeccion(datos_ins['proyecto'], datos_ins['usuario'], datos_ins['modulo'], datos_ins['norma'], text)
+            return text
+        except Exception as e: return f"Error IA: {str(e)}"
 
     def generar_pdf_ia(self, datos, texto_ia, ruta_imagen):
         pdf = PDFReport()
         pdf.set_auto_page_break(auto=True, margin=15)
         pdf.add_page()
         
-        # Título
-        pdf.set_font('Arial', 'B', 14)
-        pdf.cell(0, 10, 'REPORTE TÉCNICO DE INSPECCIÓN', 0, 1, 'C')
+        # Datos del reporte
+        pdf.set_font('Arial', 'B', 16)
+        pdf.cell(0, 10, 'DICTAMEN TÉCNICO DE INSPECCIÓN', 0, 1, 'C')
         pdf.set_font('Arial', '', 10)
-        pdf.cell(0, 6, f"Norma: {datos['norma']} | Fecha: {datetime.datetime.now().strftime('%d/%m/%Y')}", 0, 1, 'C')
-        pdf.cell(0, 6, f"Proyecto: {datos['proyecto']}", 0, 1, 'C')
-        pdf.ln(5)
+        pdf.cell(0, 6, f"Proyecto: {datos['proyecto']} | Norma: {datos['norma']}", 0, 1, 'C')
+        pdf.cell(0, 6, f"Inspector: {datos['usuario']} | Fecha: {datetime.datetime.now().strftime('%d/%m/%Y')}", 0, 1, 'C')
+        pdf.ln(10)
         
-        # Imagen
+        # Imagen de Evidencia
         if os.path.exists(ruta_imagen):
-            pdf.set_fill_color(240, 240, 240)
-            pdf.cell(0, 8, " EVIDENCIA FOTOGRÁFICA", 1, 1, 'L', 1)
+            pdf.set_fill_color(255, 230, 200) # Fondo naranja claro
+            pdf.set_font('Arial', 'B', 11)
+            pdf.cell(0, 8, " EVIDENCIA VISUAL ANALIZADA", 1, 1, 'L', 1)
             pdf.ln(2)
             try:
-                x_pos = (210 - 100) / 2
+                x_pos = (210 - 100) / 2 # Centrar imagen
                 pdf.image(ruta_imagen, x=x_pos, w=100)
                 pdf.ln(5)
             except: pass
 
-        # Texto
-        pdf.set_font('Arial', 'B', 12)
-        pdf.cell(0, 8, " DICTAMEN DEL INSPECTOR", 1, 1, 'L', 1)
-        pdf.ln(2)
+        # Texto del Dictamen
+        pdf.set_fill_color(50, 50, 50) # Fondo oscuro para título
+        pdf.set_text_color(255, 255, 255) # Texto blanco
+        pdf.cell(0, 8, " RESULTADOS DEL ANÁLISIS VIG.IA", 1, 1, 'L', 1)
+        pdf.set_text_color(0, 0, 0) # Volver a negro
+        pdf.ln(5)
         
         pdf.set_font('Arial', '', 11)
         texto_limpio = texto_ia.replace('**', '').replace('##', '').replace('•', '-')
@@ -192,13 +143,27 @@ class InspectorIndustrial:
         
         return pdf.output(dest='S').encode('latin-1')
 
+# --- 3. CLASE DE DISEÑO PDF (CON LOGO) ---
 class PDFReport(FPDF):
     def header(self):
-        self.set_font('Arial', 'B', 10)
-        self.cell(0, 10, 'VIGÍA INDUSTRIAL - SISTEMA INTELIGENTE', 0, 0, 'L')
-        self.line(10, 18, 200, 18)
-        self.ln(12)
+        # 1. INSERTAR LOGO (Debe llamarse "logo.png" en GitHub)
+        # Coordenadas: x=10, y=8. Ancho: 25mm
+        if os.path.exists("logo.png"):
+            self.image("logo.png", 10, 8, 25)
+            
+        # 2. TEXTO DEL ENCABEZADO (Movido a la derecha)
+        self.set_font('Arial', 'B', 12)
+        self.cell(30) # Espacio en blanco para el logo
+        self.cell(0, 10, 'VIG.IA - INDUSTRIAL INTELLIGENCE', 0, 0, 'L')
+        
+        # 3. LÍNEA SEPARADORA NARANJA (BRANDING)
+        self.set_draw_color(255, 111, 0) # Color Safety Orange
+        self.set_line_width(1)
+        self.line(10, 28, 200, 28) # Línea debajo del logo
+        self.ln(25) # Salto de línea grande para no tapar
+
     def footer(self):
         self.set_y(-15)
         self.set_font('Arial', 'I', 8)
-        self.cell(0, 10, f'Pág {self.page_no()}', 0, 0, 'C')
+        self.set_text_color(128) # Gris
+        self.cell(0, 10, f'Reporte generado por Sistema VIG.IA | Página {self.page_no()}', 0, 0, 'C')
