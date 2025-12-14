@@ -1,6 +1,6 @@
 # PROYECTO: VIG.IA - SISTEMA DE INTELIGENCIA INDUSTRIAL
 # ARCHIVO: vigia.py
-# VERSIÓN: 2.0 (MULTI-IMAGE SUPPORT)
+# VERSIÓN: 2.1 (MULTI-USER PRIVACY FIX)
 
 import streamlit as st
 import tempfile
@@ -59,20 +59,25 @@ except: API_KEY_NUBE = ""
 # --- SIDEBAR ---
 with st.sidebar:
     st.markdown("# 🟠 VIG.IA")
-    st.markdown("**Industrial Intelligence v2.0**")
+    st.markdown("**Industrial Intelligence v2.1**")
     st.markdown("---")
     if CLAVE_MAESTRA: api_key = CLAVE_MAESTRA; st.success("🔓 Licencia: LOCAL")
     elif API_KEY_NUBE: api_key = API_KEY_NUBE; st.info("☁️ Licencia: CLOUD")
     else: api_key = st.text_input("🔑 API Key:", type="password")
     st.markdown("---")
     st.markdown("### 👷‍♂️ Datos de Auditoría")
-    usuario = st.text_input("Inspector:", "Invitado Remoto")
+    
+    # MODIFICACIÓN: Guardamos el usuario en session_state para que no se borre al cambiar de pestaña
+    if 'usuario_actual' not in st.session_state: st.session_state.usuario_actual = "Invitado Remoto"
+    usuario = st.text_input("Inspector:", st.session_state.usuario_actual)
+    st.session_state.usuario_actual = usuario # Actualizar estado
+    
     proyecto = st.text_input("Activo / Tag:", "Inspección Móvil")
 
 # --- TABS ---
-tab1, tab2 = st.tabs(["🕵️ INSPECCIÓN EN CAMPO", "📜 MEMORIA TÉCNICA"])
+tab1, tab2 = st.tabs(["🕵️ INSPECCIÓN EN CAMPO", "📜 MI MEMORIA TÉCNICA"])
 
-# === PESTAÑA 1 ===
+# === PESTAÑA 1: INSPECCIÓN ===
 with tab1:
     col_conf, col_form = st.columns([1, 2])
     
@@ -91,7 +96,7 @@ with tab1:
         st.markdown("**O agregar foto de Cámara:**")
         archivo_camara = st.camera_input("ACTIVAR CÁMARA", label_visibility="collapsed")
 
-        # LOGICA DE UNIFICACIÓN: Juntamos todo en una sola lista
+        # LOGICA DE UNIFICACIÓN
         lista_imagenes_final = []
         if archivos_galeria:
             lista_imagenes_final.extend(archivos_galeria)
@@ -139,7 +144,7 @@ with tab1:
                 resultado = inspector.analizar_imagen_con_ia(api_key, rutas_temporales, info, datos_tecnicos)
                 
                 st.session_state['res_web'] = resultado
-                st.session_state['imgs_web'] = rutas_temporales # Guardamos la lista
+                st.session_state['imgs_web'] = rutas_temporales 
                 st.session_state['info_web'] = info
             st.success("✅ DICTAMEN GENERADO")
 
@@ -149,21 +154,33 @@ with tab1:
         st.write(st.session_state['res_web'])
         
         if st.button("📄 DESCARGAR PDF OFICIAL"):
-            # Pasamos la lista de imágenes para el anexo
             pdf = inspector.generar_pdf_ia(st.session_state['info_web'], st.session_state['res_web'], st.session_state['imgs_web'])
             st.download_button("Bajar Informe PDF", pdf, "Informe_VIGIA.pdf", "application/pdf", use_container_width=True)
 
-# === PESTAÑA 2 ===
+# === PESTAÑA 2: HISTORIAL PRIVADO ===
 with tab2:
     col_head, col_trash = st.columns([3, 1])
-    with col_head: st.header("Historial")
+    with col_head: 
+        st.header(f"Historial de: {usuario}") # Título dinámico
     with col_trash:
-        if st.button("🗑️ FORMATEAR"): inspector.borrar_memoria(); st.rerun()
-    if st.button("🔄 Actualizar"): st.rerun()
+        # CORRECCIÓN DE PRIVACIDAD: Solo borra lo de este usuario
+        if st.button("🗑️ LIMPIAR MIS DATOS"): 
+            inspector.borrar_memoria(usuario) # Pasamos el usuario explícitamente
+            st.warning(f"Historial de {usuario} eliminado.")
+            time.sleep(1)
+            st.rerun()
+            
+    if st.button("🔄 Actualizar Tabla"): st.rerun()
     
-    historial = inspector.obtener_historial()
+    # CORRECCIÓN DE PRIVACIDAD: Solo lee lo de este usuario
+    historial = inspector.obtener_historial(usuario) # Filtramos por usuario
+    
     if historial:
         for fila in historial:
+            # fila = (fecha, proyecto, modulo, norma, dictamen)
             with st.expander(f"📅 {fila[0]} | {fila[1]} ({fila[2]})"):
+                st.markdown(f"**Norma Aplicada:** {fila[3]}")
+                st.markdown("---")
                 st.markdown(fila[4])
-    else: st.info("Memoria limpia.")
+    else:
+        st.info(f"No hay registros guardados para el inspector {usuario}.")
